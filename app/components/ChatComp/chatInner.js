@@ -13,7 +13,7 @@ export default class Chat extends Component{
         super();
       
         this.user = firebase.auth().currentUser;
-        
+        this.lastData;
         this.usersCollections = firebase.firestore().collection("users")
         this.mainCollection =  firebase.firestore().collection("messages")
         this.state = {
@@ -64,7 +64,7 @@ export default class Chat extends Component{
         this.OtherUsernames = this.state.userNames
       
         await this.checkifChatexists(this.state.userUIDS, this.state.chatID)
-        this.Scrollview.scrollToEnd()
+        
         
         
         
@@ -120,205 +120,422 @@ export default class Chat extends Component{
         
         const chatCollection =  this.mainCollection.doc(this.state.chatID).collection("messages")
         
-        chatCollection.orderBy("timeStamp", "asc").onSnapshot({includeMetadataChanges: true}, async msgSnapshot =>{
-            await chatCollection.orderBy("timeStamp", "desc").get().then((querySnapshot) =>{
-                const myData = querySnapshot.docs[0]
-                console.log(myData)
-                if(myData === undefined){
-                    this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
-                    this.retreiveMessages()
-                    this.setState({loaded: true})
-
-                }
-                
-                
-                else{
-                    if(myData.data().senderName !== this.user.displayName){
-                        if(!myData.data().hasRead){
-                            if(this.state.userUIDS.length == 2){
-                                myData.ref.set({
-                                    hasRead: "Seen"
-                
-                                }, {merge:true})
-
-                            }
-                            else{
-                                const prevSeen = myData.data().hasRead;
-                                if(prevSeen === undefined){
-                                    myData.ref.update({
-                                        hasRead:`Seen by ${this.user.displayName} `
-                                    })
+        if(this.lastData != undefined){
+            chatCollection.orderBy("timeStamp", "asc").startAfter(this.lastData).limit(10).onSnapshot({includeMetadataChanges: true}, async msgSnapshot =>{
+                await chatCollection.orderBy("timeStamp", "desc").get().then((querySnapshot) =>{
+                    const myData = querySnapshot.docs[0]
+                    
+                    console.log(myData)
+                    if(myData === undefined){
+                        this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
+                        this.retreiveMessages()
+                        this.setState({loaded: true})
+    
+                    }
+                    
+                    
+                    else{
+                        this.lastData = querySnapshot.docs[10]
+                        if(myData.data().senderName !== this.user.displayName){
+                            if(!myData.data().hasRead){
+                                if(this.state.userUIDS.length == 2){
+                                    myData.ref.set({
+                                        hasRead: "Seen"
+                    
+                                    }, {merge:true})
+    
                                 }
                                 else{
-                                    const updTxt= prevSeen + this.user.displayName
-                                    myData.ref.update({
-                                        hasRead: updTxt
-                                    })
-                                    
+                                    const prevSeen = myData.data().hasRead;
+                                    if(prevSeen === undefined){
+                                        myData.ref.update({
+                                            hasRead:`Seen by ${this.user.displayName} `
+                                        })
+                                    }
+                                    else{
+                                        const updTxt= prevSeen + this.user.displayName
+                                        myData.ref.update({
+                                            hasRead: updTxt
+                                        })
+                                        
+                                    }
+                                    console.log(prevSeen)
                                 }
-                                console.log(prevSeen)
-                            }
-                           
-        
-                        }
-                        
-        
-                    }
-                    if(this.state.userUIDS.length == 2){
-                        var otherUsername = this.RemoveFromArr(this.OtherUsernames, this.user.displayName)
-                        console.log(otherUsername)
-                        otherUsername = this.arrayToStr(otherUsername)
-                        this.state.chatName = otherUsername.split("|")[0]
-                       
-                    }
-                    else{
-                        //must be await asunc
-                        const chatID =  this.mainCollection.doc(this.state.chatID).get().then((doc) => {
-                            const chatData = doc.data()
-                            this.setState({chatName: chatData.chatName})
-
-                        })
-                        
-                        
-                      
-                    }
-                    
-                    
-                    // console.log( myData.data().senderName === this.user.displayName)
-                    
-                    if(myData.data().hasRead != "" && myData.data().senderName == this.user.displayName){
-                        this.setState({hasRead: myData.data().hasRead})
-                    
-    
-                    }
-                    else{
-                        this.setState({hasRead:""})
-                    }
-
-                }
-               
-                
-                
-                
-              
-                // console.log(myData)
-                // myData.update({hasRead:true})
-                // console.log(myData)
-
-
-            }).then(() => {
-                
-                this.scrollToEnd()
-                this.setState({loaded: true})
-
-            })
-           
-            // const lastMessageData = lastMessage.docs[0].data()
-            // console.log(lastMessageData)
-            // console.log(lastMessageData.senderName)
+                               
             
-           
-            msgSnapshot.docChanges().forEach(change =>{
-                
-                // if(change.type ==="added"){
-                    const message = new Object()
-                    const messageData=  change.doc.data()
-                    message.text = messageData.message
-                    message.senderName = messageData.senderName
-                    message.timeStamp = messageData.timeStamp
-                    
-                    if(message.timeStamp !== null){
-                        const NameDate =  message.timeStamp.toDate().toLocaleString(undefined, {
-                            weekday: 'short'
-                        })
-                        var numDate =  Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
-                            day: 'numeric'
-                        }))
-                        var monthDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
-                            month: 'numeric'
-                        }))
-                        var YearDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
-                            year: 'numeric'
-                        }))
-                      
-                        const timeDate = messageData.timeStamp.toDate().toLocaleString(undefined, {
-                            hour: 'numeric', minute: 'numeric'
-                        })
-                        const currDate = (numDate.toString() + "-" + monthDate.toString() + "-"+ YearDate.toString()).toString()
-                        var parts = currDate.split("-")
-                        // make date!
-                        var  myDate = new Date(parts[2], parts[1] - 1, parts[0]);
-                       
-                        if(dateToday !== numDate && numDate !== yesterday){
-                            message.timeStamp = NameDate + " " + numDate + " " + timeDate
-    
-    
-                        }
-                       
-                        
-                        else if(checkIfYesterday(myDate)){
+                            }
                             
-                            message.timeStamp = "Yesterday "  + timeDate
-    
+            
+                        }
+                        if(this.state.userUIDS.length == 2){
+                            var otherUsername = this.RemoveFromArr(this.OtherUsernames, this.user.displayName)
+                            console.log(otherUsername)
+                            otherUsername = this.arrayToStr(otherUsername)
+                            this.state.chatName = otherUsername.split("|")[0]
+                           
                         }
                         else{
-                            message.timeStamp = "Today " + timeDate
+                            //must be await asunc
+                            const chatID =  this.mainCollection.doc(this.state.chatID).get().then((doc) => {
+                                const chatData = doc.data()
+                                this.setState({chatName: chatData.chatName})
+    
+                            })
+                            
+                            
+                          
                         }
-                    if(change.type === "added"){
                         
-
                         
-                        // const lastSender = lastMessage.docs[0].data()
-                        // console.log(lastSender.senderName)
-                        // if(this.user.displayName !==  lastSender){
-                        //     this.state.hasRead = "Seen"
-                        // }
-                        // else{
-                        //     this.state.hasRead = ""
-                        // }
-
+                        // console.log( myData.data().senderName === this.user.displayName)
+                        
+                        if(myData.data().hasRead != "" && myData.data().senderName == this.user.displayName){
+                            this.setState({hasRead: myData.data().hasRead})
+                        
+        
+                        }
+                        else{
+                            this.setState({hasRead:""})
+                        }
+    
                     }
+                   
+                    
+                    
+                    
+                  
+                    // console.log(myData)
+                    // myData.update({hasRead:true})
+                    // console.log(myData)
+    
+    
+                }).then(() => {
+                    
+                    this.scrollToEnd()
+                    this.setState({loaded: true})
+    
+                })
+               
+                // const lastMessageData = lastMessage.docs[0].data()
+                // console.log(lastMessageData)
+                // console.log(lastMessageData.senderName)
+                
+               
+                msgSnapshot.docChanges().forEach(change =>{
+                    
+                    // if(change.type ==="added"){
+                        const message = new Object()
+                        const messageData=  change.doc.data()
+                        const date = new Date()
+                        const month = date.getMonth()
+                        const year = date.getFullYear()
+                        message.text = messageData.message
+                        message.senderName = messageData.senderName
+                        message.timeStamp = messageData.timeStamp
+                        
+                        if(message.timeStamp !== null){
+                            const NameDate =  message.timeStamp.toDate().toLocaleString(undefined, {
+                                weekday: 'short'
+                            })
+                            var numDate =  Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                day: 'numeric'
+                            }))
+                            var monthDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                month: 'numeric'
+                            }))
+                            var YearDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                year: 'numeric'
+                            }))
+                          
+                            const timeDate = messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                hour: 'numeric', minute: 'numeric'
+                            })
+                            const currDate = (numDate.toString() + "-" + monthDate.toString() + "-"+ YearDate.toString()).toString()
+                            var parts = currDate.split("-")
+                            // make date!
+                            var  myDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                           
+                            if((dateToday !== numDate && numDate !== yesterday) || monthDate != month || YearDate != year ){
+                                message.timeStamp = NameDate + " " + numDate + " " + timeDate
+        
+        
+                            }
+                           
+                            
+                            else if(checkIfYesterday(myDate)){
+                                
+                                message.timeStamp = "Yesterday "  + timeDate
+        
+                            }
+                            else{
+                                message.timeStamp = "Today " + timeDate
+                            }
+                        if(change.type === "added"){
+                            
+    
+                            
+                            // const lastSender = lastMessage.docs[0].data()
+                            // console.log(lastSender.senderName)
+                            // if(this.user.displayName !==  lastSender){
+                            //     this.state.hasRead = "Seen"
+                            // }
+                            // else{
+                            //     this.state.hasRead = ""
+                            // }
+    
+                        }
+                           
+                          
+                            
+    
+                        
+                        messagesData.unshift(message)
+                        const jsonObject = messagesData.map(JSON.stringify);
+                        const setData = new Set(jsonObject)
+                        var newArray = Array.from(setData).map(JSON.parse);
+                        messagesData = newArray
                        
                       
+    
+                            
+                            
                         
-
-                    
-                    messagesData.push(message)
-                    const jsonObject = messagesData.map(JSON.stringify);
-                    const setData = new Set(jsonObject)
-                    var newArray = Array.from(setData).map(JSON.parse);
-                    messagesData = newArray
-                   
-                  
-
+                      
+    
                         
-                        
-                    
-                  
-
-                    
-                
-
-                
-                  
-                   
-                    
                     
     
-                }
-
-            })
-            this.setState({messagesData, loaded: true} , () => {
-                this.scrollToEnd()
-            })
-            
-       
-            
-            
-            
+                    
+                      
+                       
+                        
+                        
+        
+                    }
+    
+                })
+                this.setState({messagesData, loaded: true} , () => {
+                    this.scrollToEnd()
+                })
+                
            
+                
+                
+                
+               
+    
+            })
 
-        })
+        }
+        else{
+            console.log("loading data")
+            chatCollection.orderBy("timeStamp", "asc").limitToLast(10).onSnapshot({includeMetadataChanges: true}, async msgSnapshot =>{
+                
+                    const myData = msgSnapshot.docs[0]
+                    
+                    console.log(myData)
+                    if(myData === undefined){
+                        this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
+                        this.retreiveMessages()
+                        this.setState({loaded: true})
+    
+                    }
+                    
+                    
+                    else{
+                        this.lastData = msgSnapshot.docs[10]
+                        console.log(this.lastData)
+                        if(myData.data().senderName !== this.user.displayName){
+                            if(!myData.data().hasRead){
+                                if(this.state.userUIDS.length == 2){
+                                    myData.ref.set({
+                                        hasRead: "Seen"
+                    
+                                    }, {merge:true})
+    
+                                }
+                                else{
+                                    const prevSeen = myData.data().hasRead;
+                                    if(prevSeen === undefined){
+                                        myData.ref.update({
+                                            hasRead:`Seen by ${this.user.displayName} `
+                                        })
+                                    }
+                                    else{
+                                        const updTxt= prevSeen + this.user.displayName
+                                        myData.ref.update({
+                                            hasRead: updTxt
+                                        })
+                                        
+                                    }
+                                    console.log(prevSeen)
+                                }
+                               
+            
+                            }
+                            
+            
+                        }
+                        if(this.state.userUIDS.length == 2){
+                            var otherUsername = this.RemoveFromArr(this.OtherUsernames, this.user.displayName)
+                            console.log(otherUsername)
+                            otherUsername = this.arrayToStr(otherUsername)
+                            this.state.chatName = otherUsername.split("|")[0]
+                           
+                        }
+                        else{
+                            //must be await asunc
+                            const chatID =  this.mainCollection.doc(this.state.chatID).get().then((doc) => {
+                                const chatData = doc.data()
+                                this.setState({chatName: chatData.chatName})
+    
+                            })
+                            
+                            
+                          
+                        }
+                        
+                        
+                        // console.log( myData.data().senderName === this.user.displayName)
+                        
+                        if(myData.data().hasRead != "" && myData.data().senderName == this.user.displayName){
+                            this.setState({hasRead: myData.data().hasRead})
+                        
+        
+                        }
+                        else{
+                            this.setState({hasRead:""})
+                        }
+    
+                    }
+                   
+                    
+                    
+                    
+                  
+                    // console.log(myData)
+                    // myData.update({hasRead:true})
+                    // console.log(myData)
+    
+    
+                
+                    
+                this.scrollToEnd()
+                this.setState({loaded: true})
+    
+                
+               
+                // const lastMessageData = lastMessage.docs[0].data()
+                // console.log(lastMessageData)
+                // console.log(lastMessageData.senderName)
+                
+               
+                msgSnapshot.docChanges().forEach(change =>{
+                    
+                    // if(change.type ==="added"){
+                        const message = new Object()
+                        const messageData=  change.doc.data()
+                        const date = new Date()
+                        const month = date.getMonth()
+                        const year = date.getFullYear()
+                        message.text = messageData.message
+                        message.senderName = messageData.senderName
+                        message.timeStamp = messageData.timeStamp
+                        
+                        if(message.timeStamp !== null){
+                            const NameDate =  message.timeStamp.toDate().toLocaleString(undefined, {
+                                weekday: 'short'
+                            })
+                            var numDate =  Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                day: 'numeric'
+                            }))
+                            var monthDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                month: 'numeric'
+                            }))
+                            var YearDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                year: 'numeric'
+                            }))
+                          
+                            const timeDate = messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                hour: 'numeric', minute: 'numeric'
+                            })
+                            const currDate = (numDate.toString() + "-" + monthDate.toString() + "-"+ YearDate.toString()).toString()
+                            var parts = currDate.split("-")
+                            // make date!
+                            var  myDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                           
+                            if((dateToday !== numDate && numDate !== yesterday) || monthDate != month || YearDate != year ){
+                                message.timeStamp = NameDate + " " + numDate + " " + timeDate
+        
+        
+                            }
+                           
+                            
+                            else if(checkIfYesterday(myDate)){
+                                
+                                message.timeStamp = "Yesterday "  + timeDate
+        
+                            }
+                            else{
+                                message.timeStamp = "Today " + timeDate
+                            }
+                        if(change.type === "added"){
+                            
+    
+                            
+                            // const lastSender = lastMessage.docs[0].data()
+                            // console.log(lastSender.senderName)
+                            // if(this.user.displayName !==  lastSender){
+                            //     this.state.hasRead = "Seen"
+                            // }
+                            // else{
+                            //     this.state.hasRead = ""
+                            // }
+    
+                        }
+                           
+                          
+                            
+    
+                        
+                        messagesData.push(message)
+                        const jsonObject = messagesData.map(JSON.stringify);
+                        const setData = new Set(jsonObject)
+                        var newArray = Array.from(setData).map(JSON.parse);
+                        messagesData = newArray
+                       
+                      
+    
+                            
+                            
+                        
+                      
+    
+                        
+                    
+    
+                    
+                      
+                       
+                        
+                        
+        
+                    }
+    
+                })
+                this.setState({messagesData, loaded: true} , () => {
+                    this.scrollToEnd()
+                })
+                
+           
+                
+                
+                
+               
+    
+            })
+        }
+        
       
        
         
@@ -557,9 +774,9 @@ export default class Chat extends Component{
                     </View>
                     
                    
-                    <ScrollView ref= {this.Scrollview}  keyboardShouldPersistTaps = 'handled' style = {{flex:1, height: '100%', width:'100%'}} contentContainerStyle = {{flexGrow: 1}}  >
-                           
-                                <View style = {styles.loginInfo}>
+                    <ScrollView ref= {this.Scrollview} keyboardShouldPersistTaps = 'handled' style = {{flex:1, height: '100%', width:'100%'}} contentContainerStyle = {{flexGrow: 1}}  >
+                          
+                           <View style = {styles.loginInfo}>
                                     <Text style={styles.Header}>{this.state.chatName}</Text>
                                     <Text style={styles.Header2}>This is the beginning of your chat with {this.state.chatName} </Text>
                                 </View>
@@ -628,6 +845,8 @@ export default class Chat extends Component{
                                         </View>
 
                                     </View>
+                           
+                                
                                     
                                 
 
