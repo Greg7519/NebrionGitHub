@@ -2,6 +2,7 @@ import React, {Component, createContext, useState, useRef} from 'react'
 import { StyleSheet, Text, View, Image, Alert, ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native'
 import { ScrollView, TextInput } from 'react-native-gesture-handler';
 import firebase from '../../../database/firebase'
+const {getDocs,query,orderBy, limitToLast} = require("firebase/firestore");
 import {getFontSize} from '../responsive'
 import {checkFlex} from '../responsive';
 import { useRoute } from '@react-navigation/native';
@@ -29,6 +30,7 @@ export default class Chat extends Component{
             UIDSLen: null,
             chatName: ""
         }
+        this.counter = 0;
         this.OtherUsernames = []
         this.height = Dimensions.get('window').height;
         this.sendMsg = this.sendMsg.bind(this)
@@ -37,6 +39,7 @@ export default class Chat extends Component{
         this.RemoveFromArr = this.RemoveFromArr.bind(this)
         this.scrollToEnd = this.scrollToEnd.bind(this)
         this.retreiveMessages = this.retreiveMessages.bind(this)
+        this.isCloseToTop = this.isCloseToTop.bind(this)
         this.Scrollview = React.createRef();
         
     }
@@ -62,7 +65,7 @@ export default class Chat extends Component{
         this.state.UIDSLen = this.state.userUIDS.length
         console.log(this.state.chatID)
         this.OtherUsernames = this.state.userNames
-      
+        
         await this.checkifChatexists(this.state.userUIDS, this.state.chatID)
         
         
@@ -84,7 +87,9 @@ export default class Chat extends Component{
 
     }
  
-    
+    isCloseToTop({layoutMeasurement, contentOffset, contentSize}){
+        return contentOffset.y == 0;
+    }
     async retreiveMessages(){
         var messagesData =[]
         const dateToday  = new Date().getDate(undefined, {
@@ -120,53 +125,13 @@ export default class Chat extends Component{
         
         const chatCollection =  this.mainCollection.doc(this.state.chatID).collection("messages")
         
-        if(this.lastData != undefined){
-            chatCollection.orderBy("timeStamp", "asc").startAfter(this.lastData).limit(10).onSnapshot({includeMetadataChanges: true}, async msgSnapshot =>{
-                await chatCollection.orderBy("timeStamp", "desc").get().then((querySnapshot) =>{
-                    const myData = querySnapshot.docs[0]
-                    
-                    console.log(myData)
-                    if(myData === undefined){
-                        this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
-                        this.retreiveMessages()
-                        this.setState({loaded: true})
-    
-                    }
-                    
-                    
-                    else{
-                        this.lastData = querySnapshot.docs[10]
-                        if(myData.data().senderName !== this.user.displayName){
-                            if(!myData.data().hasRead){
-                                if(this.state.userUIDS.length == 2){
-                                    myData.ref.set({
-                                        hasRead: "Seen"
-                    
-                                    }, {merge:true})
-    
-                                }
-                                else{
-                                    const prevSeen = myData.data().hasRead;
-                                    if(prevSeen === undefined){
-                                        myData.ref.update({
-                                            hasRead:`Seen by ${this.user.displayName} `
-                                        })
-                                    }
-                                    else{
-                                        const updTxt= prevSeen + this.user.displayName
-                                        myData.ref.update({
-                                            hasRead: updTxt
-                                        })
-                                        
-                                    }
-                                    console.log(prevSeen)
-                                }
-                               
-            
-                            }
-                            
-            
-                        }
+        if(this.lastData != undefined ){
+            this.counter++;
+            chatCollection.orderBy("timeStamp", "desc").startAt(this.lastData.data().timeStamp).limit(10).onSnapshot({includeMetadataChanges: true}, async msgSnapshot =>{
+                
+                    const myData = msgSnapshot.docs[0]
+                        this.lastData = msgSnapshot.docs[9]
+                        
                         if(this.state.userUIDS.length == 2){
                             var otherUsername = this.RemoveFromArr(this.OtherUsernames, this.user.displayName)
                             console.log(otherUsername)
@@ -189,16 +154,9 @@ export default class Chat extends Component{
                         
                         // console.log( myData.data().senderName === this.user.displayName)
                         
-                        if(myData.data().hasRead != "" && myData.data().senderName == this.user.displayName){
-                            this.setState({hasRead: myData.data().hasRead})
-                        
-        
-                        }
-                        else{
-                            this.setState({hasRead:""})
-                        }
+                  
     
-                    }
+                    
                    
                     
                     
@@ -209,23 +167,23 @@ export default class Chat extends Component{
                     // console.log(myData)
     
     
-                }).then(() => {
+                
                     
-                    this.scrollToEnd()
+                    
                     this.setState({loaded: true})
     
-                })
+            
                
                 // const lastMessageData = lastMessage.docs[0].data()
                 // console.log(lastMessageData)
                 // console.log(lastMessageData.senderName)
                 
-               
-                msgSnapshot.docChanges().forEach(change =>{
+            //    first retrieve must be await or async
+                msgSnapshot.docs.forEach(change =>{
                     
                     // if(change.type ==="added"){
                         const message = new Object()
-                        const messageData=  change.doc.data()
+                        const messageData=  change.data()
                         const date = new Date()
                         const month = date.getMonth()
                         const year = date.getFullYear()
@@ -289,12 +247,12 @@ export default class Chat extends Component{
                             
     
                         
-                        messagesData.unshift(message)
-                        const jsonObject = messagesData.map(JSON.stringify);
+                        this.state.messagesData.unshift(message)
+                        const jsonObject = this.state.messagesData.map(JSON.stringify);
                         const setData = new Set(jsonObject)
                         var newArray = Array.from(setData).map(JSON.parse);
+                        newArray.concat(this.state.messagesData)
                         messagesData = newArray
-                       
                       
     
                             
@@ -314,9 +272,7 @@ export default class Chat extends Component{
                     }
     
                 })
-                this.setState({messagesData, loaded: true} , () => {
-                    this.scrollToEnd()
-                })
+                this.setState({messagesData, loaded: true})
                 
            
                 
@@ -328,23 +284,25 @@ export default class Chat extends Component{
 
         }
         else{
-            console.log("loading data")
-            chatCollection.orderBy("timeStamp", "asc").limitToLast(10).onSnapshot({includeMetadataChanges: true}, async msgSnapshot =>{
-                
-                    const myData = msgSnapshot.docs[0]
+            if(this.counter == 0){
+                var snapshot= chatCollection.orderBy("timeStamp", "asc").limitToLast(10);
+                // begins from last and goes
+                 (async() =>{
+                    const msgSnapshot = await snapshot.get()
+                    var myData = msgSnapshot.docs[0]
                     
-                    console.log(myData)
                     if(myData === undefined){
-                        this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
-                        this.retreiveMessages()
-                        this.setState({loaded: true})
+                        // this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
+                        // this.retreiveMessages()
+                        // this.setState({loaded: true})
     
                     }
                     
                     
                     else{
-                        this.lastData = msgSnapshot.docs[10]
-                        console.log(this.lastData)
+                        // limit to last starts from 10th from last
+                        this.lastData = msgSnapshot.docs[0]
+                      
                         if(myData.data().senderName !== this.user.displayName){
                             if(!myData.data().hasRead){
                                 if(this.state.userUIDS.length == 2){
@@ -410,6 +368,8 @@ export default class Chat extends Component{
                     }
                    
                     
+                    this.scrollToEnd()
+                    this.setState({loaded: true})
                     
                     
                   
@@ -420,8 +380,6 @@ export default class Chat extends Component{
     
                 
                     
-                this.scrollToEnd()
-                this.setState({loaded: true})
     
                 
                
@@ -429,12 +387,12 @@ export default class Chat extends Component{
                 // console.log(lastMessageData)
                 // console.log(lastMessageData.senderName)
                 
-               
-                msgSnapshot.docChanges().forEach(change =>{
+               console.log(msgSnapshot)
+                msgSnapshot.docs.map(change =>{
                     
                     // if(change.type ==="added"){
                         const message = new Object()
-                        const messageData=  change.doc.data()
+                        const messageData=  change.data()
                         const date = new Date()
                         const month = date.getMonth()
                         const year = date.getFullYear()
@@ -502,6 +460,7 @@ export default class Chat extends Component{
                         const jsonObject = messagesData.map(JSON.stringify);
                         const setData = new Set(jsonObject)
                         var newArray = Array.from(setData).map(JSON.parse);
+                        newArray.concat(messagesData)
                         messagesData = newArray
                        
                       
@@ -533,7 +492,216 @@ export default class Chat extends Component{
                 
                
     
-            })
+                })().then(() => {
+                    snapshot.onSnapshot(async(msgSnapshot)=>{
+                        var myData = msgSnapshot.docs[0];
+                       
+                        if(myData === undefined){
+                            // this.checkifChatexists(this.state.userUIDS, this.state.userDispName)
+                            // this.retreiveMessages()
+                            // this.setState({loaded: true})
+        
+                        }
+                        
+                        
+                        else{
+                            // limit to last starts from 10th from last
+                            this.lastData = msgSnapshot.docs[0]
+                          
+                            if(myData.data().senderName !== this.user.displayName){
+                                if(!myData.data().hasRead){
+                                    if(this.state.userUIDS.length == 2){
+                                        myData.ref.set({
+                                            hasRead: "Seen"
+                        
+                                        }, {merge:true})
+        
+                                    }
+                                    else{
+                                        const prevSeen = myData.data().hasRead;
+                                        if(prevSeen === undefined){
+                                            myData.ref.update({
+                                                hasRead:`Seen by ${this.user.displayName} `
+                                            })
+                                        }
+                                        else{
+                                            const updTxt= prevSeen + this.user.displayName
+                                            myData.ref.update({
+                                                hasRead: updTxt
+                                            })
+                                            
+                                        }
+                                        console.log(prevSeen)
+                                    }
+                                   
+                
+                                }
+                                
+                
+                            }
+                            if(this.state.userUIDS.length == 2){
+                                var otherUsername = this.RemoveFromArr(this.OtherUsernames, this.user.displayName)
+                                console.log(otherUsername)
+                                otherUsername = this.arrayToStr(otherUsername)
+                                this.state.chatName = otherUsername.split("|")[0]
+                               
+                            }
+                            else{
+                                //must be await asunc
+                                const chatID =  this.mainCollection.doc(this.state.chatID).get().then((doc) => {
+                                    const chatData = doc.data()
+                                    this.setState({chatName: chatData.chatName})
+        
+                                })
+                                
+                                
+                              
+                            }
+                            
+                            
+                            // console.log( myData.data().senderName === this.user.displayName)
+                            
+                            if(myData.data().hasRead != "" && myData.data().senderName == this.user.displayName){
+                                this.setState({hasRead: myData.data().hasRead})
+                            
+            
+                            }
+                            else{
+                                this.setState({hasRead:""})
+                            }
+        
+                        }
+                       
+                        
+                        this.scrollToEnd()
+                        this.setState({loaded: true})
+                        
+                        
+                      
+                        // console.log(myData)
+                        // myData.update({hasRead:true})
+                        // console.log(myData)
+        
+        
+                    
+                        
+        
+                    
+                   
+                    // const lastMessageData = lastMessage.docs[0].data()
+                    // console.log(lastMessageData)
+                    // console.log(lastMessageData.senderName)
+                    
+                   console.log(msgSnapshot)
+                    msgSnapshot.docs.map(change =>{
+                        
+                        // if(change.type ==="added"){
+                            const message = new Object()
+                            const messageData=  change.data()
+                            const date = new Date()
+                            const month = date.getMonth()
+                            const year = date.getFullYear()
+                            message.text = messageData.message
+                            message.senderName = messageData.senderName
+                            message.timeStamp = messageData.timeStamp
+                            
+                            if(message.timeStamp !== null){
+                                const NameDate =  message.timeStamp.toDate().toLocaleString(undefined, {
+                                    weekday: 'short'
+                                })
+                                var numDate =  Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                    day: 'numeric'
+                                }))
+                                var monthDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                    month: 'numeric'
+                                }))
+                                var YearDate = Number(messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                    year: 'numeric'
+                                }))
+                              
+                                const timeDate = messageData.timeStamp.toDate().toLocaleString(undefined, {
+                                    hour: 'numeric', minute: 'numeric'
+                                })
+                                const currDate = (numDate.toString() + "-" + monthDate.toString() + "-"+ YearDate.toString()).toString()
+                                var parts = currDate.split("-")
+                                // make date!
+                                var  myDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                               
+                                if((dateToday !== numDate && numDate !== yesterday) || monthDate != month || YearDate != year ){
+                                    message.timeStamp = NameDate + " " + numDate + " " + timeDate
+            
+            
+                                }
+                               
+                                
+                                else if(checkIfYesterday(myDate)){
+                                    
+                                    message.timeStamp = "Yesterday "  + timeDate
+            
+                                }
+                                else{
+                                    message.timeStamp = "Today " + timeDate
+                                }
+                            if(change.type === "added"){
+                                
+        
+                                
+                                // const lastSender = lastMessage.docs[0].data()
+                                // console.log(lastSender.senderName)
+                                // if(this.user.displayName !==  lastSender){
+                                //     this.state.hasRead = "Seen"
+                                // }
+                                // else{
+                                //     this.state.hasRead = ""
+                                // }
+        
+                            }
+                               
+                              
+                                
+        
+                            
+                            messagesData.push(message)
+                            const jsonObject = messagesData.map(JSON.stringify);
+                            const setData = new Set(jsonObject)
+                            var newArray = Array.from(setData).map(JSON.parse);
+                            newArray.concat(messagesData)
+                            messagesData = newArray
+                           
+                          
+        
+                                
+                                
+                            
+                          
+        
+                            
+                        
+        
+                        
+                          
+                           
+                            
+                            
+            
+                        }
+        
+                    })
+                    this.setState({messagesData, loaded: true} , () => {
+                        this.scrollToEnd()
+                    })
+                    
+               
+                    
+                    
+                    
+                   
+                    })
+                    
+                })
+            }
+           
+           
         }
         
       
@@ -774,7 +942,14 @@ export default class Chat extends Component{
                     </View>
                     
                    
-                    <ScrollView ref= {this.Scrollview} keyboardShouldPersistTaps = 'handled' style = {{flex:1, height: '100%', width:'100%'}} contentContainerStyle = {{flexGrow: 1}}  >
+                    <ScrollView scrollEventThrottle= {100} onScroll = {({nativeEvent}) => {
+                        if(this.isCloseToTop(nativeEvent) ){
+                            this.oldHeight = nativeEvent.contentSize.height;
+                            this.retreiveMessages()
+                            
+                        }
+                       
+                    }} ref= {this.Scrollview} onContentSizeChange={(contentWidth, contentHeight)=>{this.Scrollview.current.scrollTo({x:0, y:contentHeight-this.oldHeight, animated:false})}} contentContainerStyle = {{flexGrow: 1}}  >
                           
                            <View style = {styles.loginInfo}>
                                     <Text style={styles.Header}>{this.state.chatName}</Text>
