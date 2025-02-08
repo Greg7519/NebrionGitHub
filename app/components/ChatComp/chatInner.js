@@ -1,6 +1,5 @@
 import React, {Component, createContext, useState, useRef} from 'react'
-import { StyleSheet, Text, View, Image, Alert, ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native'
-import { ScrollView, TextInput } from 'react-native-gesture-handler';
+import { StyleSheet,Animated, TextInput, ScrollView,Text, View, Image, Alert, ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native'
 import firebase from '../../../database/firebase'
 const {getDocs,query,orderBy, limitToLast} = require("firebase/firestore");
 import {getFontSize} from '../responsive'
@@ -14,11 +13,20 @@ export default class Chat extends Component{
         super();
       
         this.user = firebase.auth().currentUser;
+        this.messageArrayLenOld = 10;
         this.lastData;
+        this.offset;
+        this.newMessagesHeight =0;
+        this.ogHeight;
+        this.headerSize;
         this.usersCollections = firebase.firestore().collection("users")
         this.mainCollection =  firebase.firestore().collection("messages")
         this.state = {
+            scrollPosEl:0,
             message: "",
+            isUpdating:false,
+            scrollHeight:0,
+            isRetrieving: true,
             userUIDS: null,
             userNames: null,
             chatID: "",
@@ -131,7 +139,7 @@ export default class Chat extends Component{
                 
                     const myData = msgSnapshot.docs[0]
                         this.lastData = msgSnapshot.docs[9]
-                        
+                        this.setState({isRetrieving:true})
                         if(this.state.userUIDS.length == 2){
                             var otherUsername = this.RemoveFromArr(this.OtherUsernames, this.user.displayName)
                             console.log(otherUsername)
@@ -170,7 +178,7 @@ export default class Chat extends Component{
                 
                     
                     
-                    this.setState({loaded: true})
+                    
     
             
                
@@ -213,7 +221,7 @@ export default class Chat extends Component{
                             // make date!
                             var  myDate = new Date(parts[2], parts[1] - 1, parts[0]);
                            
-                            if((dateToday !== numDate && numDate !== yesterday) || monthDate != month || YearDate != year ){
+                            if((dateToday !== numDate || numDate !== yesterday) || monthDate != month || YearDate != year ){
                                 message.timeStamp = NameDate + " " + numDate + " " + timeDate
         
         
@@ -272,7 +280,13 @@ export default class Chat extends Component{
                     }
     
                 })
-                this.setState({messagesData, loaded: true})
+                
+                this.setState({messagesData})
+                
+                // if(this.counter == 0){
+                //     this.scrollToEnd()
+                // }
+                
                 
            
                 
@@ -368,8 +382,7 @@ export default class Chat extends Component{
                     }
                    
                     
-                    this.scrollToEnd()
-                    this.setState({loaded: true})
+                   
                     
                     
                   
@@ -482,8 +495,9 @@ export default class Chat extends Component{
                     }
     
                 })
-                this.setState({messagesData, loaded: true} , () => {
+                this.setState({messagesData}, () => {
                     this.scrollToEnd()
+                    this.setState({loaded:true})
                 })
                 
            
@@ -573,7 +587,6 @@ export default class Chat extends Component{
                         }
                        
                         
-                        this.scrollToEnd()
                         this.setState({loaded: true})
                         
                         
@@ -645,7 +658,7 @@ export default class Chat extends Component{
                             if(change.type === "added"){
                                 
         
-                                
+                                this.setState({isRetrieving:false})
                                 // const lastSender = lastMessage.docs[0].data()
                                 // console.log(lastSender.senderName)
                                 // if(this.user.displayName !==  lastSender){
@@ -834,7 +847,8 @@ export default class Chat extends Component{
     async sendMsg(){
         // later will be appended to check if user added/removed
         const message = this.state.message
-        this.setState({message:""})
+        
+        this.setState({message:"", isRetrieving:false})
         // const chatCollections = firebase.firestore().collection("messages")
 
         const timeStamp = firebase.firestore.FieldValue.serverTimestamp()
@@ -891,11 +905,11 @@ export default class Chat extends Component{
         }
             
             
-            // .then(() => {
-            //     this.setState({message: ""}, () => {
-            //         this.scrollToEnd()
+           
+                this.setState({message: ""}, () => {
+                    this.scrollToEnd()
 
-            //     })
+                })
     
             // })
             
@@ -918,53 +932,72 @@ export default class Chat extends Component{
         const {chatName} = this.state;
         const {loaded} = this.state;
         const {hasRead} = this.state; 
-      
-        
+        var {isRetrieving} = this.state;
+        var {scrollPosEl} = this.state;
+        const boolRetr = isRetrieving
+        var {scrollHeight} =this.state;
+        var {isUpdating} = this.state
      
         
         if(loaded === true){
             return(
                 
-            <View style = {{flex:1}} >
-                    <View style = {styles.userBar}>
-                        <View style = {{flexDirection:'row', width: '100%'}}>
-                            <View style = {{flexDirection: 'column', width: '30%',alignItems: 'flex-start',  paddingHorizontal: 5}}>
-                                <Text style = {styles.userBarText}>{chatName}</Text>
-                                
-                            </View>
-
-                            
-                           
-                           
-                        </View>
-                       
-                        
-                    </View>
+            <View style = {{flex:1, backgroundColor:'white'}} >
+                   
                     
                    
-                    <ScrollView scrollEventThrottle= {100} onScroll = {({nativeEvent}) => {
+                    <ScrollView pagingEnabled={true} scrollEventThrottle= {16} onScroll = {({nativeEvent}) => {
                         if(this.isCloseToTop(nativeEvent) ){
-                            this.oldHeight = nativeEvent.contentSize.height;
+                        
+                           
+                            
+                        }
+                       
+                        if(nativeEvent.contentOffset.y <= scrollPosEl){
+                          this.oldHeight = nativeEvent.contentSize.height;
+                            this.offset = nativeEvent.contentOffset.y;
+                            isUpdating = true;
                             this.retreiveMessages()
                             
                         }
                        
-                    }} ref= {this.Scrollview} onContentSizeChange={(contentWidth, contentHeight)=>{this.Scrollview.current.scrollTo({x:0, y:contentHeight-this.oldHeight, animated:false})}} contentContainerStyle = {{flexGrow: 1}}  >
+                    }} ref= {this.Scrollview} 
+                    // onContentSizeChange={(contentWidth, contentHeight)=>{if(boolRetr && this.counter!=0){
+                    //     console.log(contentHeight)
+                    // }}} 
+                    contentContainerStyle = {{flexGrow: 1}}  >
                           
-                           <View style = {styles.loginInfo}>
+                           <View style = {styles.loginInfo} onLayout={({nativeEvent}) =>{
+                                this.ogHeight = nativeEvent.layout.height
+                           }}>
                                     <Text style={styles.Header}>{this.state.chatName}</Text>
                                     <Text style={styles.Header2}>This is the beginning of your chat with {this.state.chatName} </Text>
-                                </View>
+                            </View>
                             
                             
                                 
-                                    
+                                    <View onLayout={({nativeEvent})=>{
+                                        if(this.newMessagesHeight!= 0 && this.newMessagesHeight <nativeEvent.layout.height){
+                                            
+                                            scrollHeight = nativeEvent.layout.height - this.newMessagesHeight
+                                            {(this.Scrollview.current!=null && this.counter!=0&&scrollHeight>0 &&isRetrieving) &&(
+                                          
+                                                this.Scrollview.current.scrollTo({x:0,y:scrollHeight+ this.ogHeight,animated:false})
+                                              
+                                              // this.Scrollview.current.onContentSizeChange((contentWidth, contentHeight)=>{this.Scrollview.current.scrollTo({x:0, y:(contentHeight-this.oldHeight+this.ogHeight), animated:false})})
+                                              
+                                          ) &&(isRetrieving = false)}
+                                        }
+                                        this.newMessagesHeight = nativeEvent.layout.height
+                                        
+                                    }}>
                                     {this.state.messagesData.map((item, index) => {
                                         return(
-                                            <View  key={index}>
-                                                
+                                            <View key={index} >
+                                               
                                                 {item.senderName == this.user.displayName ?
                                                      <View style = {styles.senderCont}>
+                                                       
                                                         <View style = {styles.flexInside}>
                                                             <Text style = {styles.upperMsg}>You:</Text>
                                                             
@@ -1002,7 +1035,14 @@ export default class Chat extends Component{
 
                                         
 
-                                    })}
+                                    })
+
+                                    }
+                                    
+                                    
+                                   
+                                    </View>
+                                   
                                     <View >
                                         <Text style = {{padding: 10, textAlign: 'right'}}>{hasRead}</Text>
 

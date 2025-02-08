@@ -388,11 +388,13 @@ const styles = StyleSheet.create({
     },
     addUserBtn:{
         backgroundColor: "#D3D3D3",
-        padding: 10
+        padding: 10,
+        marginRight: 10
 
 
     },
     userAligner:{
+        flex:1,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center', 
@@ -402,6 +404,7 @@ const styles = StyleSheet.create({
 
     CreateChatBtn:{
         backgroundColor: "#D3D3D3",
+        marginLeft:10,
         padding: 10
 
     },
@@ -442,7 +445,7 @@ const styles = StyleSheet.create({
         // outlineStyle: 'none',
         width: "100%",
         height: 50,
-        flex:1,
+       
         padding:10,
         marginLeft:20
     },
@@ -462,7 +465,7 @@ const styles = StyleSheet.create({
 
     },
     HorizontalAlign:{
-        
+
         width: '100%',
         flexDirection: 'row',
         
@@ -471,9 +474,7 @@ const styles = StyleSheet.create({
     BottomAlign:{
         
         height: '100%',
-        flex:1,
-        margin: '20%',
-        justifyContent:'flex-end'
+        marginTop: '20%',
 
     },
     login_btn:{
